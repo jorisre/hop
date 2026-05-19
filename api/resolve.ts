@@ -20,7 +20,7 @@ type Logger = (...args: unknown[]) => void;
 
 export default async function handler(
   req: VercelRequest,
-  res: VercelResponse<ApiResponse>
+  res: VercelResponse
 ) {
   const url = req.query.url;
   const debug = req.query.debug === '1';
@@ -34,20 +34,20 @@ export default async function handler(
 
   if (!url || typeof url !== 'string') {
     log('[Pulse] Missing URL');
-    return res.status(400).json({ error: 'Missing url' });
+      return res.status(400).json({ error: 'Missing url' } satisfies ApiResponse);
   }
 
   try {
     const meta = await getMusicMeta(url, log);
     log('[Pulse] Final result:', meta);
 
-    return res.status(200).json(meta);
+    return res.status(200).json(meta satisfies ApiResponse);
   } catch (e) {
     log('[Pulse] ERROR:', e);
 
     return res.status(500).json({
       error: e instanceof Error ? e.message : 'Unknown error'
-    });
+    } satisfies ApiResponse);
   }
 }
 
@@ -85,11 +85,18 @@ async function getMusicMeta(url: string, log: Logger): Promise<MusicMeta> {
   let currentTag: 'title' | 'h1' | null = null;
 
   let chunkCount = 0;
+  let totalBytes = 0;
+  let shouldStop = false;
+  let insideHead = false;
 
   const decoder = new TextDecoder('utf-8');
 
   const parser = new Parser({
     onopentag(name, attrs) {
+      if (name === 'head') {
+        insideHead = true;
+      }
+
       if (name === 'meta') {
         const key = (attrs.property || attrs.name || '')
           .trim()
@@ -143,8 +150,16 @@ async function getMusicMeta(url: string, log: Logger): Promise<MusicMeta> {
     },
 
     onclosetag(tag) {
+      if (tag === 'head') {
+        insideHead = false;
+      }
+
       if (tag === currentTag) {
         currentTag = null;
+      }
+
+      if (!insideHead && (ogTitle || twitterTitle || titleTag || h1)) {
+        shouldStop = true;
       }
     }
   });
@@ -152,6 +167,7 @@ async function getMusicMeta(url: string, log: Logger): Promise<MusicMeta> {
   try {
     for await (const chunk of response.body) {
       chunkCount++;
+      totalBytes += chunk.length;
 
       const text = decoder.decode(chunk, { stream: true });
 
@@ -159,8 +175,18 @@ async function getMusicMeta(url: string, log: Logger): Promise<MusicMeta> {
 
       parser.write(text);
 
-      if (chunkCount > 50) {
-        log('[Pulse] Too many chunks, aborting safety stop');
+      if ((ogTitle || twitterTitle) && artist) {
+        shouldStop = true;
+      }
+
+      if (shouldStop) {
+        log('[Pulse] Enough metadata found, stopping early');
+        controller.abort();
+        break;
+      }
+
+      if (totalBytes > 256 * 1024 || chunkCount > 50) {
+        log('[Pulse] Stream safety stop triggered');
         controller.abort();
         break;
       }
