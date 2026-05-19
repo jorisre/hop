@@ -21,10 +21,7 @@ const TIMEOUT = 2500;
 
 type Logger = (...args: unknown[]) => void;
 
-export default async function handler(
-  req: VercelRequest,
-  res: VercelResponse<ApiResponse>
-) {
+export default async function handler(req: VercelRequest, res: VercelResponse<ApiResponse>) {
   const url = req.query.url;
   const debug = req.query.debug === '1';
 
@@ -40,7 +37,6 @@ export default async function handler(
 
   try {
     const meta = await getMusicMeta(url, log);
-
     return res.status(200).json(meta);
   } catch (e) {
     return res.status(500).json({
@@ -75,30 +71,24 @@ async function getMusicMeta(
   let twitterTitle: string | null = null;
   let titleTag: string | null = null;
   let h1: string | null = null;
-
   let artist: string | null = null;
 
   let jsonLDName: string | null = null;
   let jsonLDArtist: string | null = null;
 
-  let currentTag: 'title' | 'h1' | 'script' | null =
-    null;
+  let currentTag: 'title' | 'h1' | 'script' | null = null;
 
   let shouldStop = false;
-
   let chunkCount = 0;
   let totalBytes = 0;
+
+  const decoder = new TextDecoder();
 
   const parser = new Parser(
     {
       onopentag(name, attrs) {
-        // META TAGS
         if (name === 'meta') {
-          const key = (
-            attrs.property ||
-            attrs.name ||
-            ''
-          )
+          const key = (attrs.property || attrs.name || '')
             .trim()
             .toLowerCase();
 
@@ -106,47 +96,29 @@ async function getMusicMeta(
 
           if (!key || !content) return;
 
-          // TITLE PRIORITY
           if (key === 'og:title' && !ogTitle) {
             ogTitle = content;
-            return;
           }
 
-          if (
-            key === 'twitter:title' &&
-            !twitterTitle
-          ) {
+          if (key === 'twitter:title' && !twitterTitle) {
             twitterTitle = content;
-            return;
           }
 
-          // ARTIST
           if (
-            (key === 'twitter:audio:artist_name' ||
-              key === 'music:artist' ||
-              key === 'music:musician' ||
-              key === 'og:audio:artist') &&
-            !artist
+            key === 'twitter:audio:artist_name'
           ) {
-            artist = content;
+            if (!artist) artist = content;
           }
-
-          return;
         }
 
-        // TITLE
         if (name === 'title' && !titleTag) {
           currentTag = 'title';
-          return;
         }
 
-        // H1
         if (name === 'h1' && !h1) {
           currentTag = 'h1';
-          return;
         }
 
-        // JSON-LD
         if (
           name === 'script' &&
           attrs.type === 'application/ld+json'
@@ -156,58 +128,31 @@ async function getMusicMeta(
       },
 
       ontext(text) {
-        if (!currentTag) return;
-
         const value = text.trim();
-
         if (!value) return;
 
-        // TITLE TAG
-        if (
-          currentTag === 'title' &&
-          !titleTag
-        ) {
+        if (currentTag === 'title' && !titleTag) {
           titleTag = value;
-          return;
         }
 
-        // H1
         if (currentTag === 'h1' && !h1) {
           h1 = value;
-          return;
         }
 
-        // JSON-LD
-        if (
-          currentTag === 'script' &&
-          (!jsonLDName || !jsonLDArtist)
-        ) {
+        if (currentTag === 'script') {
           try {
             const json = JSON.parse(value);
 
-            if (
-              typeof json?.name === 'string' &&
-              !jsonLDName
-            ) {
-              jsonLDName = json.name.trim();
+            if (json?.name && !jsonLDName) {
+              jsonLDName = json.name;
             }
 
-            if (
-              typeof json?.byArtist?.name ===
-                'string' &&
-              !jsonLDArtist
-            ) {
-              jsonLDArtist =
-                json.byArtist.name.trim();
+            if (json?.byArtist?.name && !jsonLDArtist) {
+              jsonLDArtist = json.byArtist.name;
             }
 
-            if (
-              typeof json?.author?.name ===
-                'string' &&
-              !jsonLDArtist
-            ) {
-              jsonLDArtist =
-                json.author.name.trim();
+            if (json?.author?.name && !jsonLDArtist) {
+              jsonLDArtist = json.author.name;
             }
           } catch {}
         }
@@ -218,7 +163,6 @@ async function getMusicMeta(
           currentTag = null;
         }
 
-        // 🚀 stop after </head>
         if (tag === 'head') {
           shouldStop = true;
         }
@@ -234,8 +178,8 @@ async function getMusicMeta(
       chunkCount++;
       totalBytes += chunk.length;
 
-      // 🚀 Node runtime optimized path
-      parser.write(chunk.toString());
+      // ✅ FIX CRITIQUE ICI
+      parser.write(decoder.decode(chunk, { stream: true }));
 
       const name =
         ogTitle ||
@@ -247,12 +191,10 @@ async function getMusicMeta(
       const finalArtist =
         artist || jsonLDArtist;
 
-      // 🚀 fastest successful exit
       if (name && finalArtist) {
         shouldStop = true;
       }
 
-      // 🚀 safety stop
       if (
         totalBytes > 256 * 1024 ||
         chunkCount > 50
@@ -266,19 +208,13 @@ async function getMusicMeta(
       }
     }
   } catch (e) {
-    if (
-      !(
-        e instanceof Error &&
-        e.name === 'AbortError'
-      )
-    ) {
+    if (!(e instanceof Error && e.name === 'AbortError')) {
       throw e;
     }
   } finally {
     parser.end();
   }
 
-  // FINAL PRIORITY RESOLUTION
   const name =
     ogTitle ||
     twitterTitle ||
@@ -295,12 +231,6 @@ async function getMusicMeta(
           `${name} ${finalArtist}`
         )}`
       : null;
-
-  log('[Pulse] Result:', {
-    name,
-    artist: finalArtist,
-    spotify
-  });
 
   return {
     name,
