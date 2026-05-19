@@ -8,9 +8,7 @@ export const config = {
 type MusicMeta = {
   name: string | null;
   artist: string | null;
-  spotify: {
-    url: string | null;
-  };
+  spotify: string | null;
 };
 
 const HEADERS = {
