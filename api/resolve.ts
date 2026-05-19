@@ -23,14 +23,21 @@ export default async function handler(
 ) {
   const url = req.query.url;
 
+  console.log('[Pulse] Incoming request:', url);
+
   if (!url || typeof url !== 'string') {
+    console.log('[Pulse] Missing URL');
     return res.status(400).json({ error: 'Missing url' });
   }
 
   try {
     const meta = await getMusicMeta(url);
+    console.log('[Pulse] Final result:', meta);
+
     return res.status(200).json(meta);
   } catch (e) {
+    console.error('[Pulse] ERROR:', e);
+
     return res.status(500).json({
       error: e instanceof Error ? e.message : 'Unknown error'
     });
@@ -40,7 +47,12 @@ export default async function handler(
 async function getMusicMeta(url: string): Promise<MusicMeta> {
   const controller = new AbortController();
 
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT);
+  const timeout = setTimeout(() => {
+    console.log('[Pulse] Timeout triggered');
+    controller.abort();
+  }, TIMEOUT);
+
+  console.log('[Pulse] Fetching URL...');
 
   const response = await fetch(url, {
     redirect: 'follow',
@@ -49,6 +61,9 @@ async function getMusicMeta(url: string): Promise<MusicMeta> {
   });
 
   clearTimeout(timeout);
+
+  console.log('[Pulse] Response status:', response.status);
+  console.log('[Pulse] Content-Type:', response.headers.get('content-type'));
 
   if (!response.ok || !response.body) {
     throw new Error(`Request failed: ${response.status}`);
@@ -62,49 +77,44 @@ async function getMusicMeta(url: string): Promise<MusicMeta> {
 
   let currentTag: 'title' | 'h1' | null = null;
 
+  let chunkCount = 0;
+
   const decoder = new TextDecoder('utf-8');
 
   const parser = new Parser({
     onopentag(name, attrs) {
-      // FAST EXIT (safe)
-      if (ogTitle && artist) {
-        controller.abort();
-        return;
-      }
-
       if (name === 'meta') {
-        const key = (attrs.property || attrs.name || '').trim().toLowerCase();
+        const key = (attrs.property || attrs.name || '')
+          .trim()
+          .toLowerCase();
+
         const content = attrs.content?.trim();
 
         if (!key || !content) return;
 
         if (key === 'og:title' && !ogTitle) {
           ogTitle = content;
-          return;
+          console.log('[Pulse] og:title found:', ogTitle);
         }
 
         if (key === 'twitter:title' && !twitterTitle) {
           twitterTitle = content;
-          return;
+          console.log('[Pulse] twitter:title found:', twitterTitle);
         }
 
-        // realistic music fields
         if (
           (key === 'music:musician' ||
             key === 'music:artist' ||
-            key === 'og:audio:artist' ||
             key === 'twitter:audio:artist_name') &&
           !artist
         ) {
           artist = content;
+          console.log('[Pulse] artist found:', artist);
         }
-
-        return;
       }
 
       if (name === 'title' && !titleTag) {
         currentTag = 'title';
-        return;
       }
 
       if (name === 'h1' && !h1) {
@@ -113,18 +123,17 @@ async function getMusicMeta(url: string): Promise<MusicMeta> {
     },
 
     ontext(text) {
-      if (!currentTag) return;
-
       const value = text.trim();
       if (!value) return;
 
       if (currentTag === 'title' && !titleTag) {
         titleTag = value;
-        return;
+        console.log('[Pulse] <title> found:', titleTag);
       }
 
       if (currentTag === 'h1' && !h1) {
         h1 = value;
+        console.log('[Pulse] <h1> found:', h1);
       }
     },
 
@@ -137,15 +146,36 @@ async function getMusicMeta(url: string): Promise<MusicMeta> {
 
   try {
     for await (const chunk of response.body) {
-      parser.write(decoder.decode(chunk, { stream: true }));
+      chunkCount++;
+
+      const text = decoder.decode(chunk, { stream: true });
+
+      console.log(`[Pulse] Chunk #${chunkCount} size=${text.length}`);
+
+      parser.write(text);
+
+      if (chunkCount > 50) {
+        console.log('[Pulse] Too many chunks, aborting safety stop');
+        controller.abort();
+        break;
+      }
     }
   } catch (e) {
+    console.log('[Pulse] Stream error:', e);
     if (!(e instanceof Error && e.name === 'AbortError')) {
       throw e;
     }
   } finally {
     parser.end();
   }
+
+  console.log('[Pulse] Parsed values:', {
+    ogTitle,
+    twitterTitle,
+    titleTag,
+    h1,
+    artist
+  });
 
   return {
     name: ogTitle || twitterTitle || titleTag || h1,
