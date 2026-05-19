@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "skills": {
+    "bun": {
+      "source": "bun.sh",
+      "sourceType": "well-known",
+      "computedHash": "0360e16797cc5cc2578b3ad915a169fecfe2ba7ca07f96885a77f190347bffcb"
+    },
+    "vercel-functions": {
+      "source": "vercel-labs/vercel-plugin",
+      "sourceType": "github",
+      "skillPath": "skills/vercel-functions/SKILL.md",
+      "computedHash": "e818c251109a887f5687f36b4e9a3a67707ef2e141141f1cfefb9dd2273f6dc3"
+    }
+  }
+}
