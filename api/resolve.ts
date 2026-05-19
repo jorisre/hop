@@ -103,9 +103,7 @@ async function getMusicMeta(url: string): Promise<MusicMeta> {
         }
 
         if (
-          (key === 'music:musician' ||
-            key === 'music:artist' ||
-            key === 'twitter:audio:artist_name') &&
+          (key === 'twitter:audio:artist_name') &&
           !artist
         ) {
           artist = content;
