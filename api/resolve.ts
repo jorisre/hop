@@ -12,7 +12,8 @@ type ApiResponse =
 
 const HEADERS = {
   'user-agent': 'Mozilla/5.0',
-  accept: 'text/html,application/xhtml+xml'
+  accept: 'text/html,application/xhtml+xml',
+  'accept-language': 'fr-FR,fr;q=0.9'
 };
 
 const TIMEOUT = 4000;
