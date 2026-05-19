@@ -37,6 +37,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse<Ap
 
   try {
     const meta = await getMusicMeta(url, log);
+    if (!meta.name) {
+      return res.status(404).json({
+        error: 'Not found'
+      });
+    }
+
     return res.status(200).json(meta);
   } catch (e) {
     return res.status(500).json({
