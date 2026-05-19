@@ -8,36 +8,31 @@ type MusicMeta = {
 
 type ApiResponse =
   | MusicMeta
-  | {
-      error: string;
-    };
+  | { error: string };
 
 const HEADERS = {
   'user-agent': 'Mozilla/5.0',
   accept: 'text/html,application/xhtml+xml'
 };
 
-const FETCH_TIMEOUT = 4000;
+const TIMEOUT = 4000;
 
 export default async function handler(
   req: VercelRequest,
-  res: VercelResponse
+  res: VercelResponse<ApiResponse>
 ) {
   const url = req.query.url;
 
   if (!url || typeof url !== 'string') {
-    return res.status(400).json({
-      error: 'Missing url query parameter'
-    });
+    return res.status(400).json({ error: 'Missing url' });
   }
 
   try {
     const meta = await getMusicMeta(url);
-
     return res.status(200).json(meta);
-  } catch (error) {
+  } catch (e) {
     return res.status(500).json({
-      error: getErrorMessage(error)
+      error: e instanceof Error ? e.message : 'Unknown error'
     });
   }
 }
@@ -45,131 +40,108 @@ export default async function handler(
 async function getMusicMeta(url: string): Promise<MusicMeta> {
   const controller = new AbortController();
 
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, FETCH_TIMEOUT);
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT);
 
-  let response: Response;
-
-  try {
-    response = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: HEADERS
-    });
-  } catch (error) {
-    clearTimeout(timeout);
-
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Request timeout');
-    }
-
-    throw error;
-  }
+  const response = await fetch(url, {
+    redirect: 'follow',
+    signal: controller.signal,
+    headers: HEADERS
+  });
 
   clearTimeout(timeout);
 
-  if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
-  }
-
-  if (!response.body) {
-    throw new Error('Empty response body');
+  if (!response.ok || !response.body) {
+    throw new Error(`Request failed: ${response.status}`);
   }
 
   let ogTitle: string | null = null;
   let twitterTitle: string | null = null;
   let titleTag: string | null = null;
   let h1: string | null = null;
-
   let artist: string | null = null;
 
   let currentTag: 'title' | 'h1' | null = null;
 
-  const parser = new Parser(
-    {
-      onopentag(name, attrs) {
-        if (ogTitle && artist) {
-          controller.abort();
+  const decoder = new TextDecoder('utf-8');
+
+  const parser = new Parser({
+    onopentag(name, attrs) {
+      // FAST EXIT (safe)
+      if (ogTitle && artist) {
+        controller.abort();
+        return;
+      }
+
+      if (name === 'meta') {
+        const key = (attrs.property || attrs.name || '').trim().toLowerCase();
+        const content = attrs.content?.trim();
+
+        if (!key || !content) return;
+
+        if (key === 'og:title' && !ogTitle) {
+          ogTitle = content;
           return;
         }
 
-        if (name === 'meta') {
-          const key = (attrs.property || attrs.name || '').trim().toLowerCase();
-
-          const content = attrs.content?.trim();
-
-          if (!key || !content) {
-            return;
-          }
-
-          if (key === 'og:title' && !ogTitle) {
-            ogTitle = content;
-            return;
-          }
-
-          if (key === 'twitter:title' && !twitterTitle) {
-            twitterTitle = content;
-            return;
-          }
-
-          if (key === 'twitter:audio:artist_name' && !artist) {
-            artist = content;
-          }
-
+        if (key === 'twitter:title' && !twitterTitle) {
+          twitterTitle = content;
           return;
         }
 
-        if (name === 'title' && !titleTag) {
-          currentTag = 'title';
-          return;
+        // realistic music fields
+        if (
+          (key === 'music:musician' ||
+            key === 'music:artist' ||
+            key === 'og:audio:artist' ||
+            key === 'twitter:audio:artist_name') &&
+          !artist
+        ) {
+          artist = content;
         }
 
-        if (name === 'h1' && !h1) {
-          currentTag = 'h1';
-        }
-      },
+        return;
+      }
 
-      ontext(text) {
-        if (!currentTag) {
-          return;
-        }
+      if (name === 'title' && !titleTag) {
+        currentTag = 'title';
+        return;
+      }
 
-        const value = text.trim();
-
-        if (!value) {
-          return;
-        }
-
-        if (currentTag === 'title' && !titleTag) {
-          titleTag = value;
-          return;
-        }
-
-        if (currentTag === 'h1' && !h1) {
-          h1 = value;
-        }
-      },
-
-      onclosetag(tagname) {
-        if (tagname === currentTag) {
-          currentTag = null;
-        }
+      if (name === 'h1' && !h1) {
+        currentTag = 'h1';
       }
     },
-    {
-      decodeEntities: false
+
+    ontext(text) {
+      if (!currentTag) return;
+
+      const value = text.trim();
+      if (!value) return;
+
+      if (currentTag === 'title' && !titleTag) {
+        titleTag = value;
+        return;
+      }
+
+      if (currentTag === 'h1' && !h1) {
+        h1 = value;
+      }
+    },
+
+    onclosetag(tag) {
+      if (tag === currentTag) {
+        currentTag = null;
+      }
     }
-  );
+  });
 
   try {
-    for await (const chunk of response.body as AsyncIterable<string | Buffer>) {
-      parser.write(chunk.toString());
+    for await (const chunk of response.body) {
+      parser.write(decoder.decode(chunk, { stream: true }));
     }
-  } catch (error) {
-    if (!(error instanceof Error && error.name === 'AbortError')) {
-      throw error;
+  } catch (e) {
+    if (!(e instanceof Error && e.name === 'AbortError')) {
+      throw e;
     }
   } finally {
     parser.end();
@@ -179,12 +151,4 @@ async function getMusicMeta(url: string): Promise<MusicMeta> {
     name: ogTitle || twitterTitle || titleTag || h1,
     artist
   };
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return 'Unknown error';
 }
