@@ -23,9 +23,9 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  const url = req.query.url;
+  const url = getQueryParam(req, 'url');
 
-  if (!url || typeof url !== 'string') {
+  if (!url) {
     return res.status(400).json({
       error: 'Missing url query parameter'
     });
@@ -187,4 +187,16 @@ function getErrorMessage(error: unknown): string {
   }
 
   return 'Unknown error';
+}
+
+function getQueryParam(req: VercelRequest, key: string): string | null {
+  if (!req.url) {
+    return null;
+  }
+
+  const base = `http://${req.headers.host || 'localhost'}`;
+  const parsedUrl = new URL(req.url, base);
+  const value = parsedUrl.searchParams.get(key);
+
+  return value?.trim() || null;
 }
