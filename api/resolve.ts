@@ -237,6 +237,6 @@ async function getMusicMeta(
   return {
     name,
     artist: finalArtist,
-    spotify
+    spotify: spotify.url
   };
 }
