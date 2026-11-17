@@ -38,13 +38,14 @@ function mockFetch(html: string, status = 200, chunkSize = 32) {
 type Body = {
   name?: string | null;
   artist?: string | null;
+  link?: string | null;
   platforms: Record<'spotify' | 'appleMusic' | 'deezer' | 'tidal', string | null>;
   error?: string;
 };
 
 type Result = { status: number; body: Body; headers: Record<string, string> };
 
-async function resolve(url?: string): Promise<Result> {
+async function resolve(url?: string, to?: string): Promise<Result> {
   const result = { status: 0, body: {}, headers: {} } as Result;
   const res = {
     setHeader(key: string, value: string) {
@@ -60,7 +61,9 @@ async function resolve(url?: string): Promise<Result> {
       return res;
     }
   };
-  const query = url === undefined ? {} : { url };
+  const query: Record<string, string> = {};
+  if (url !== undefined) query.url = url;
+  if (to !== undefined) query.to = to;
   await handler({ query } as unknown as VercelRequest, res as unknown as VercelResponse);
   return result;
 }
@@ -254,6 +257,47 @@ describe('errors', () => {
     expect(r.status).toBe(200);
     expect(r.body.name).toBe('Song');
     expect(chunks).toBeLessThan(5);
+  });
+});
+
+describe('target', () => {
+  const page = `<head><meta property="og:title" content="Halo"><meta name="twitter:audio:artist_name" content="Beyoncé"></head>`;
+
+  test('adds the link for the chosen platform', async () => {
+    mockFetch(page);
+    const r = await resolve('https://open.spotify.com/track/1', 'deezer');
+    expect(r.status).toBe(200);
+    expect(r.body.link).toBe('https://www.deezer.com/search/Halo%20Beyonc%C3%A9');
+  });
+
+  test('accepts display names', async () => {
+    for (const to of ['Apple Music', 'apple', 'appleMusic', 'APPLE%20MUSIC']) {
+      mockFetch(page);
+      const r = await resolve('https://open.spotify.com/track/1', to);
+      expect(r.body.link).toBe(r.body.platforms.appleMusic);
+      expect(r.body.link).toStartWith('https://music.apple.com/search');
+    }
+  });
+
+  test('returns the original link when source and target match', async () => {
+    mockFetch(page);
+    const url = 'https://open.spotify.com/track/1';
+    const r = await resolve(url, 'Spotify');
+    expect(r.body.link).toBe(url);
+  });
+
+  test('rejects an unknown target without fetching', async () => {
+    const fetchMock = mockFetch(page);
+    const r = await resolve('https://open.spotify.com/track/1', 'napster');
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe('Unsupported target');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('omits link when no target is given', async () => {
+    mockFetch(page);
+    const r = await resolve('https://open.spotify.com/track/1');
+    expect('link' in r.body).toBe(false);
   });
 });
 

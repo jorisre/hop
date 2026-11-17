@@ -11,7 +11,7 @@ type MusicMeta = {
   platforms: PlatformLinks;
 };
 
-type ApiResponse = MusicMeta | { error: string };
+type ApiResponse = (MusicMeta & { link?: string | null }) | { error: string };
 
 type Logger = (...args: unknown[]) => void;
 
@@ -32,6 +32,19 @@ const HOSTS: Record<PlatformId, string[]> = {
   tidal: ['tidal.com']
 };
 
+/** Accepts ids and display names: "appleMusic", "Apple Music", "apple"... */
+const TARGETS: Record<string, PlatformId> = {
+  spotify: 'spotify',
+  applemusic: 'appleMusic',
+  apple: 'appleMusic',
+  deezer: 'deezer',
+  tidal: 'tidal'
+};
+
+function parseTarget(raw: string): PlatformId | null {
+  return TARGETS[raw.toLowerCase().replace(/[^a-z]/g, '')] ?? null;
+}
+
 const SEARCH: Record<PlatformId, (q: string) => string> = {
   spotify: (q) => `https://open.spotify.com/search/${q}`,
   appleMusic: (q) => `https://music.apple.com/search?term=${q}`,
@@ -42,6 +55,7 @@ const SEARCH: Record<PlatformId, (q: string) => string> = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const started = performance.now();
   const url = req.query.url;
+  const rawTarget = req.query.to;
   const debug = req.query.debug === '1';
 
   const log: Logger = (...args) => {
@@ -49,6 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   let source: PlatformId | null = null;
+  let target: PlatformId | null = null;
   let artistFound = false;
 
   const reply = (status: number, body: ApiResponse) => {
@@ -59,6 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         event: 'resolve',
         status,
         source,
+        to: target,
         artist: artistFound,
         ms: Math.round(performance.now() - started)
       })
@@ -75,6 +91,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return reply(400, { error: 'Unsupported url' });
   }
 
+  if (rawTarget !== undefined) {
+    target = typeof rawTarget === 'string' ? parseTarget(rawTarget) : null;
+    if (!target) {
+      return reply(400, { error: 'Unsupported target' });
+    }
+  }
+
   try {
     const meta = await getMusicMeta(url, source, log);
     if (!meta.name) {
@@ -83,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     artistFound = Boolean(meta.artist);
     res.setHeader('cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800');
-    return reply(200, meta);
+    return reply(200, target ? { ...meta, link: meta.platforms[target] } : meta);
   } catch (e) {
     return reply(500, {
       error: e instanceof Error ? e.message : 'Unknown error'

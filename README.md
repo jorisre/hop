@@ -8,17 +8,22 @@ Hop is a small API used by an iOS Shortcut. Send it a track link and it returns 
 
 1. Install the shortcut: [Hop for iOS Shortcuts](https://www.icloud.com/shortcuts/0000000000000000000000000000000)
 2. Open a song in any supported app, tap **Share**, then **Hop**.
+3. The first time, pick the app you want songs to open in. To change it later, run Hop from the
+   Shortcuts app.
 
 ## Usage
 
 ```
-GET /api/resolve?url=<encoded track url>
+GET /api/resolve?url=<encoded track url>&to=<spotify|appleMusic|deezer|tidal>
 ```
+
+`to` is optional. When it's set, the response includes `link`, the link for that platform.
 
 ```json
 {
   "name": "Bohemian Rhapsody",
   "artist": "Queen",
+  "link": "https://open.spotify.com/search/...",
   "platforms": {
     "spotify": "https://open.spotify.com/search/...",
     "appleMusic": "https://music.apple.com/...",
