@@ -40,6 +40,7 @@ const SEARCH: Record<PlatformId, (q: string) => string> = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const started = performance.now();
   const url = req.query.url;
   const debug = req.query.debug === '1';
 
@@ -47,32 +48,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (debug) console.log('[hop]', ...args);
   };
 
+  let source: PlatformId | null = null;
+  let artistFound = false;
+
+  const reply = (status: number, body: ApiResponse) => {
+    // One line per request, used for usage stats in Vercel Logs and Observability.
+    // Never includes the shared url or track details.
+    console.log(
+      JSON.stringify({
+        event: 'resolve',
+        status,
+        source,
+        artist: artistFound,
+        ms: Math.round(performance.now() - started)
+      })
+    );
+    return res.status(status).json(body);
+  };
+
   if (!url || typeof url !== 'string') {
-    return send(res, 400, { error: 'Missing url' });
+    return reply(400, { error: 'Missing url' });
   }
 
-  const source = detectPlatform(url);
+  source = detectPlatform(url);
   if (!source) {
-    return send(res, 400, { error: 'Unsupported url' });
+    return reply(400, { error: 'Unsupported url' });
   }
 
   try {
     const meta = await getMusicMeta(url, source, log);
     if (!meta.name) {
-      return send(res, 404, { error: 'Not found' });
+      return reply(404, { error: 'Not found' });
     }
 
+    artistFound = Boolean(meta.artist);
     res.setHeader('cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800');
-    return send(res, 200, meta);
+    return reply(200, meta);
   } catch (e) {
-    return send(res, 500, {
+    return reply(500, {
       error: e instanceof Error ? e.message : 'Unknown error'
     });
   }
-}
-
-function send(res: VercelResponse, status: number, body: ApiResponse) {
-  return res.status(status).json(body);
 }
 
 function detectPlatform(raw: string): PlatformId | null {

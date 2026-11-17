@@ -1,11 +1,20 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import handler from '../api/resolve.ts';
 
 const realFetch = globalThis.fetch;
+let logs: string[] = [];
+
+beforeEach(() => {
+  logs = [];
+  spyOn(console, 'log').mockImplementation((line: string) => {
+    logs.push(line);
+  });
+});
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  mock.restore();
 });
 
 /** Serve `html` in small chunks so the parser sees split tags and text. */
@@ -245,5 +254,26 @@ describe('errors', () => {
     expect(r.status).toBe(200);
     expect(r.body.name).toBe('Song');
     expect(chunks).toBeLessThan(5);
+  });
+});
+
+describe('usage log', () => {
+  test('logs one anonymous line per request', async () => {
+    mockFetch(
+      `<head><meta property="og:title" content="Song"><meta name="twitter:audio:artist_name" content="Artist"></head>`
+    );
+    await resolve('https://www.deezer.com/track/42?secret=1');
+
+    expect(logs).toHaveLength(1);
+    const entry = JSON.parse(logs[0] as string);
+    expect(entry).toMatchObject({ event: 'resolve', status: 200, source: 'deezer', artist: true });
+    expect(typeof entry.ms).toBe('number');
+    expect(logs[0]).not.toContain('deezer.com');
+    expect(logs[0]).not.toContain('Song');
+  });
+
+  test('logs rejected requests', async () => {
+    await resolve('https://example.com');
+    expect(JSON.parse(logs[0] as string)).toMatchObject({ status: 400, source: null });
   });
 });
