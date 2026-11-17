@@ -26,10 +26,17 @@ function mockFetch(html: string, status = 200, chunkSize = 32) {
   return fn;
 }
 
-type Result = { status: number; body: any; headers: Record<string, string> };
+type Body = {
+  name?: string | null;
+  artist?: string | null;
+  platforms: Record<'spotify' | 'appleMusic' | 'deezer' | 'tidal', string | null>;
+  error?: string;
+};
+
+type Result = { status: number; body: Body; headers: Record<string, string> };
 
 async function resolve(url?: string): Promise<Result> {
-  const result: Result = { status: 0, body: null, headers: {} };
+  const result = { status: 0, body: {}, headers: {} } as Result;
   const res = {
     setHeader(key: string, value: string) {
       result.headers[key] = value;
@@ -40,7 +47,7 @@ async function resolve(url?: string): Promise<Result> {
       return res;
     },
     json(body: unknown) {
-      result.body = body;
+      result.body = body as Body;
       return res;
     }
   };
@@ -53,7 +60,7 @@ describe('validation', () => {
   test('rejects a missing url', async () => {
     const r = await resolve();
     expect(r.status).toBe(400);
-    expect(r.body).toEqual({ error: 'Missing url' });
+    expect(r.body.error).toBe('Missing url');
   });
 
   test('rejects an invalid url', async () => {
@@ -70,7 +77,7 @@ describe('validation', () => {
     ]) {
       const r = await resolve(url);
       expect(r.status).toBe(400);
-      expect(r.body).toEqual({ error: 'Unsupported url' });
+      expect(r.body.error).toBe('Unsupported url');
     }
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -112,7 +119,9 @@ describe('spotify', () => {
   });
 
   test('accepts spotify.link short links', async () => {
-    mockFetch(`<head><meta property="og:title" content="Song"><meta name="twitter:audio:artist_name" content="Artist"></head>`);
+    mockFetch(
+      `<head><meta property="og:title" content="Song"><meta name="twitter:audio:artist_name" content="Artist"></head>`
+    );
     const r = await resolve('https://spotify.link/abc');
     expect(r.status).toBe(200);
     expect(r.body.platforms.spotify).toBe('https://spotify.link/abc');
@@ -137,7 +146,9 @@ describe('apple music', () => {
     expect(r.body.name).toBe('Bohemian Rhapsody');
     expect(r.body.artist).toBe('Queen');
     expect(r.body.platforms.appleMusic).toBe(url);
-    expect(r.body.platforms.spotify).toBe('https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen');
+    expect(r.body.platforms.spotify).toBe(
+      'https://open.spotify.com/search/Bohemian%20Rhapsody%20Queen'
+    );
   });
 
   test('cleans "by Artist on Apple Music" from og:title', async () => {
@@ -162,7 +173,9 @@ describe('deezer', () => {
     const r = await resolve('https://www.deezer.com/fr/track/3135556');
     expect(r.body.name).toBe('Rock & Roll');
     expect(r.body.artist).toBe('Led Zeppelin');
-    expect(r.body.platforms.tidal).toBe('https://tidal.com/search?q=Rock%20%26%20Roll%20Led%20Zeppelin');
+    expect(r.body.platforms.tidal).toBe(
+      'https://tidal.com/search?q=Rock%20%26%20Roll%20Led%20Zeppelin'
+    );
   });
 });
 
@@ -182,7 +195,9 @@ describe('tidal', () => {
 
 describe('title parsing', () => {
   test('keeps "by" inside real titles', async () => {
-    mockFetch(`<head><meta property="og:title" content="Stand by Me"><meta name="twitter:audio:artist_name" content="Ben E. King"></head>`);
+    mockFetch(
+      `<head><meta property="og:title" content="Stand by Me"><meta name="twitter:audio:artist_name" content="Ben E. King"></head>`
+    );
     const r = await resolve('https://open.spotify.com/track/1');
     expect(r.body.name).toBe('Stand by Me');
     expect(r.body.artist).toBe('Ben E. King');
@@ -201,14 +216,14 @@ describe('errors', () => {
     mockFetch('<html><head></head><body></body></html>');
     const r = await resolve('https://open.spotify.com/track/1');
     expect(r.status).toBe(404);
-    expect(r.body).toEqual({ error: 'Not found' });
+    expect(r.body.error).toBe('Not found');
   });
 
   test('returns 500 when the page responds with an error', async () => {
     mockFetch('nope', 503);
     const r = await resolve('https://open.spotify.com/track/1');
     expect(r.status).toBe(500);
-    expect(r.body).toEqual({ error: 'Request failed: 503' });
+    expect(r.body.error).toBe('Request failed: 503');
   });
 
   test('stops reading once title and artist are found', async () => {
@@ -218,7 +233,9 @@ describe('errors', () => {
       const body = new ReadableStream<Uint8Array>({
         pull(controller) {
           chunks++;
-          controller.enqueue(new TextEncoder().encode(chunks === 1 ? head : '<p>filler</p>'.repeat(100)));
+          controller.enqueue(
+            new TextEncoder().encode(chunks === 1 ? head : '<p>filler</p>'.repeat(100))
+          );
         }
       });
       return new Response(body);

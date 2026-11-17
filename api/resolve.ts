@@ -174,17 +174,17 @@ function readJsonLD(node: unknown, out: JsonLD): void {
     const by = obj.byArtist ?? obj.author;
     const first = Array.isArray(by) ? by[0] : by;
     if (typeof first === 'string') out.artist = clean(first);
-    else if (first && typeof first === 'object' && typeof (first as { name?: unknown }).name === 'string') {
+    else if (
+      first &&
+      typeof first === 'object' &&
+      typeof (first as { name?: unknown }).name === 'string'
+    ) {
       out.artist = clean((first as { name: string }).name);
     }
   }
 }
 
-async function getMusicMeta(
-  url: string,
-  source: PlatformId,
-  log: Logger
-): Promise<MusicMeta> {
+async function getMusicMeta(url: string, source: PlatformId, log: Logger): Promise<MusicMeta> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT);
 
@@ -252,12 +252,10 @@ async function getMusicMeta(
           if (tag === 'title' && !titleTag) {
             currentTag = 'title';
             titleBuffer = '';
-          }
-          else if (tag === 'h1' && !h1) {
+          } else if (tag === 'h1' && !h1) {
             currentTag = 'h1';
             h1Buffer = '';
-          }
-          else if (tag === 'script' && attrs.type === 'application/ld+json') {
+          } else if (tag === 'script' && attrs.type === 'application/ld+json') {
             currentTag = 'script';
             scriptBuffer = '';
           }

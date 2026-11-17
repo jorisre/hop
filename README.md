@@ -42,6 +42,10 @@ bun run dev
 bun test
 ```
 
+```bash
+bun run lint
+```
+
 ## License
 
 MIT
