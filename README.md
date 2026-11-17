@@ -43,7 +43,7 @@ bun test
 ```
 
 ```bash
-bun run lint
+bun fmt
 ```
 
 ## License
