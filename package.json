@@ -8,6 +8,7 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "vercel dev",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "htmlparser2": "^12.0.0"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.4",
     "@types/node": "^25.9.0",
     "typescript": "^6.0.3"
   }

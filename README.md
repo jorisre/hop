@@ -38,6 +38,10 @@ bun install
 bun run dev
 ```
 
+```bash
+bun test
+```
+
 ## License
 
 MIT
