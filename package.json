@@ -7,6 +7,7 @@
   "private": true,
   "packageManager": "bun@1.4.4",
   "scripts": {
+    "build": "bun scripts/build.ts",
     "dev": "vercel dev",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@types/bun": "^1.4.4",
     "@types/node": "^25.9.0",
+    "marked": "^18.2.1",
     "typescript": "^6.0.3"
   }
 }
