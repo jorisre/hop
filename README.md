@@ -11,7 +11,7 @@ Hop is a small API used by an iOS Shortcut. Send it a track link and it returns 
 
 ## Setup
 
-1. Install the shortcut: [Hop for iOS Shortcuts](https://www.icloud.com/shortcuts/0000000000000000000000000000000)
+1. Install the shortcut: [Hop for iOS Shortcuts](https://www.icloud.com/shortcuts/fa4b86f2df25469c870cc22e0816611a)
 2. When adding it, type the app you want songs to open in: Spotify, Apple Music, Deezer or
    Tidal. To change it later, edit the shortcut's first Text action.
 3. Open a song in any supported app, tap **Share**, then **Hop**.
