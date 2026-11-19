@@ -1,4 +1,9 @@
-# Hop
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" alt="Hop" width="200">
+  </picture>
+</h1>
 
 Share a song from Spotify, Apple Music, Deezer or Tidal, and open it on any of the others.
 
