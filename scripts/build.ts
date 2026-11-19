@@ -1,10 +1,9 @@
 import { cp, mkdir, rm } from 'node:fs/promises';
-import { marked } from 'marked';
 
 const OUT = 'public';
 
 const readme = await Bun.file('README.md').text();
-const body = await marked.parse(readme);
+const body = Bun.markdown.html(readme);
 
 const html = `<!doctype html>
 <html lang="en">
